@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gong Interval Timer</title>
+<meta name="theme-color" content="#101614">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one centered column. Setup view (total time, interval rows, preview strip) swaps with a run view (big ring countdown, segment strip, controls). */
+:root {
+  --bg: #e8ece9;
+  --surface: #f6f8f6;
+  --fg: #17211e;
+  --muted: #5c6b66;
+  --line: #c9d2cd;
+  --accent: #8f5f14;
+  --accent-fg: #fffaf0;
+  --accent-soft: #e9d9bb;
+  --danger: #a3342b;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-num: "DM Mono", ui-monospace, "Roboto Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101614;
+    --surface: #18211e;
+    --fg: #e6ece9;
+    --muted: #94a39d;
+    --line: #2b3834;
+    --accent: #e0aa4b;
+    --accent-fg: #1d1405;
+    --accent-soft: #3a2f17;
+    --danger: #ef8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101614;
+  --surface: #18211e;
+  --fg: #e6ece9;
+  --muted: #94a39d;
+  --line: #2b3834;
+  --accent: #e0aa4b;
+  --accent-fg: #1d1405;
+  --accent-soft: #3a2f17;
+  --danger: #ef8a80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.4;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.75rem; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 500; margin: 0; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row.wrap-row { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.time-in { display: flex; align-items: center; gap: 6px; }
+.time-in input {
+  width: 4.2rem; font: 500 1.25rem var(--font-num); text-align: center; padding: 10px 4px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.time-in .unit { color: var(--muted); font-size: 0.85rem; }
+input:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.badge { font: 500 0.8rem var(--font-num); color: var(--muted); width: 1.6rem; text-align: right; flex: none; }
+.iv-row { display: flex; align-items: center; gap: 10px; }
+button { font: inherit; cursor: pointer; }
+.icon-btn { margin-left: auto; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 1.2rem; line-height: 1; flex: none; }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.btn { border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--fg); padding: 12px 16px; font-weight: 700; min-height: 48px; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-size: 1.1rem; }
+.btn.danger { color: var(--danger); }
+.btn.block { width: 100%; }
+.toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.hint { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.err { color: var(--danger); font-weight: 500; margin: 0; min-height: 1.4em; }
+input[type="range"] { accent-color: var(--accent); width: 100%; min-width: 0; }
+
+/* segment strip */
+.strip { display: flex; gap: 3px; height: 14px; width: 100%; }
+.strip > i { display: block; position: relative; flex-grow: 1; flex-basis: 0; min-width: 2px; background: var(--accent-soft); border-radius: 3px; overflow: hidden; }
+.strip > i > b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
+.strip-cap { display: flex; justify-content: space-between; font: 400 0.8rem var(--font-num); color: var(--muted); }
+
+/* run view */
+.ring-box { position: relative; width: min(78vw, 320px); aspect-ratio: 1; margin: 4px auto; max-width: 100%; }
+.ring-box svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+.ring-bg { stroke: var(--line); }
+.ring-fg { stroke: var(--accent); stroke-linecap: round; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; }
+.big { font: 500 clamp(2.6rem, 14vw, 4.2rem) var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.cur-label { font-weight: 700; font-size: 1.1rem; }
+.meta { color: var(--muted); font-size: 0.9rem; }
+.meta-num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.stat-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stat-row > div { min-width: 0; }
+.stat-row .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.stat-row .v { font: 500 1.15rem var(--font-num); font-variant-numeric: tabular-nums; }
+.ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.done-box { text-align: center; padding: 28px 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .ring-fg { transition: stroke-dashoffset 0.25s linear; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Gong Interval Timer</h1>
+    <p class="sub">Set a total time and your own interval lengths. A loud horn sounds at the end of each one.</p>
+  </header>
+
+  <!-- Setup view -->
+  <main id="setup" class="wrap" style="gap:20px">
+    <section class="panel" aria-labelledby="h-max">
+      <h2 id="h-max">Maximum time</h2>
+      <div class="time-in">
+        <input id="max-m" type="number" inputmode="numeric" min="0" max="999" aria-label="Maximum minutes"><span class="unit">min</span>
+        <input id="max-s" type="number" inputmode="numeric" min="0" max="59" aria-label="Maximum seconds"><span class="unit">sec</span>
+      </div>
+      <p class="hint">The session always stops here, even in the middle of an interval.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-iv">
+      <h2 id="h-iv">Intervals</h2>
+      <div id="iv-list" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button id="add-iv" class="btn" type="button">Add interval</button>
+      <label class="toggle" for="repeat">
+        <input id="repeat" type="checkbox">
+        <span>Repeat the list until the maximum time is reached</span>
+      </label>
+    </section>
+
+    <section class="panel" aria-labelledby="h-prev">
+      <h2 id="h-prev">Plan</h2>
+      <div id="strip-setup" class="strip" aria-hidden="true"></div>
+      <div class="strip-cap"><span>0:00</span><span id="plan-end">0:00</span></div>
+      <p id="plan-text" class="hint"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-snd">
+      <h2 id="h-snd">Sound</h2>
+      <div class="row wrap-row">
+        <label for="vol" class="meta">Volume</label>
+        <input id="vol" type="range" min="0.1" max="1" step="0.05" class="grow">
+        <button id="test" class="btn" type="button">Test horn</button>
+      </div>
+    </section>
+
+    <p id="err" class="err" role="alert"></p>
+    <button id="start" class="btn primary block" type="button">Start</button>
+    <p class="hint">Keep this page open and your phone's volume up. Android may stop the sound if the screen locks, so the timer asks to keep the screen awake while it runs.</p>
+  </main>
+
+  <!-- Run view -->
+  <main id="run" class="wrap" style="gap:20px" hidden>
+    <div class="ring-box">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="ring-bg" cx="100" cy="100" r="90" fill="none" stroke-width="8"></circle>
+        <circle id="ring" class="ring-fg" cx="100" cy="100" r="90" fill="none" stroke-width="8"></circle>
+      </svg>
+      <div class="ring-center">
+        <div id="cur-label" class="cur-label">Interval 1</div>
+        <div id="cur-time" class="big" aria-live="off">0:00</div>
+        <div id="next-text" class="meta"></div>
+      </div>
+    </div>
+    <div id="strip-run" class="strip" aria-hidden="true"></div>
+    <div class="stat-row">
+      <div><div class="k">Time left</div><div id="left" class="v">0:00</div></div>
+      <div><div class="k">Elapsed</div><div id="elapsed" class="v">0:00</div></div>
+      <div><div class="k">Ends at</div><div id="total" class="v">0:00</div></div>
+    </div>
+    <div class="ctrl">
+      <button id="pause" class="btn primary" type="button">Pause</button>
+      <button id="stop" class="btn danger" type="button">Stop</button>
+    </div>
+  </main>
+
+  <!-- Done view -->
+  <main id="done" class="wrap" hidden>
+    <section class="panel done-box">
+      <h2>Finished</h2>
+      <div id="done-text" class="big" style="font-size:2.4rem">0:00</div>
+      <p id="done-sub" class="hint"></p>
+      <button id="again" class="btn primary block" type="button">Back to setup</button>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = "gong-interval-timer-v1";
+  var CIRC = 2 * Math.PI * 90;
+
+  var state = { max: { m: 30, s: 0 }, repeat: true, vol: 0.7, intervals: [{ m: 10, s: 0 }, { m: 5, s: 0 }, { m: 5, s: 0 }] };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (saved && saved.intervals && saved.intervals.length && saved.max) state = saved;
+  } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function fmt(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+  }
+  function secs(o) { return o.m * 60 + o.s; }
+  function clampInt(v, lo, hi) { v = parseInt(v, 10); if (isNaN(v)) v = 0; return Math.min(hi, Math.max(lo, v)); }
+
+  /* ---------- timeline ---------- */
+  function buildTimeline() {
+    var maxS = secs(state.max), n = state.intervals.length, tl = [], t = 0, i = 0;
+    while (t < maxS) {
+      var d = secs(state.intervals[i % n]);
+      if (d < 1) break;
+      var start = t;
+      t += d;
+      var end = Math.min(t, maxS);
+      tl.push({ i: i, n: (i % n) + 1, round: Math.floor(i / n) + 1, start: start, end: end, last: false });
+      i++;
+      if (!state.repeat && i >= n) break;
+    }
+    if (tl.length) tl[tl.length - 1].last = true;
+    return tl;
+  }
+
+  function renderStrip(el, tl, e) {
+    if (el.childNodes.length !== tl.length) {
+      el.innerHTML = "";
+      tl.forEach(function (b) {
+        var seg = document.createElement("i");
+        seg.style.flexGrow = (b.end - b.start);
+        seg.appendChild(document.createElement("b"));
+        el.appendChild(seg);
+      });
+    } else {
+      tl.forEach(function (b, k) { el.childNodes[k].style.flexGrow = (b.end - b.start); });
+    }
+    tl.forEach(function (b, k) {
+      var p = e == null ? 0 : Math.min(1, Math.max(0, (e - b.start) / (b.end - b.start)));
+      el.childNodes[k].firstChild.style.width = (p * 100) + "%";
+    });
+  }
+
+  /* ---------- setup view ---------- */
+  function renderRows() {
+    var list = $("iv-list");
+    list.innerHTML = "";
+    state.intervals.forEach(function (iv, k) {
+      var row = document.createElement("div");
+      row.className = "iv-row";
+      row.innerHTML =
+        '<span class="badge">' + (k + 1) + '</span>' +
+        '<div class="time-in">' +
+        '<input id="iv-m-' + k + '" type="number" inputmode="numeric" min="0" max="999" aria-label="Interval ' + (k + 1) + ' minutes"><span class="unit">min</span>' +
+        '<input id="iv-s-' + k + '" type="number" inputmode="numeric" min="0" max="59" aria-label="Interval ' + (k + 1) + ' seconds"><span class="unit">sec</span>' +
+        '</div>' +
+        '<button id="iv-x-' + k + '" class="icon-btn" type="button" aria-label="Remove interval ' + (k + 1) + '">&times;</button>';
+      list.appendChild(row);
+      var mi = row.querySelector("#iv-m-" + k), si = row.querySelector("#iv-s-" + k), xb = row.querySelector("#iv-x-" + k);
+      mi.value = iv.m; si.value = iv.s;
+      mi.addEventListener("input", function () { iv.m = clampInt(mi.value, 0, 999); afterEdit(); });
+      si.addEventListener("input", function () { iv.s = clampInt(si.value, 0, 59); afterEdit(); });
+      mi.addEventListener("change", function () { mi.value = iv.m; });
+      si.addEventListener("change", function () { si.value = iv.s; });
+      xb.disabled = state.intervals.length <= 1;
+      xb.addEventListener("click", function () { state.intervals.splice(k, 1); renderRows(); afterEdit(); });
+    });
+  }
+
+  function afterEdit() { save(); updatePlan(); $("err").textContent = ""; }
+
+  function updatePlan() {
+    var tl = buildTimeline(), maxS = secs(state.max);
+    renderStrip($("strip-setup"), tl, null);
+    var end = tl.length ? tl[tl.length - 1].end : 0;
+    $("plan-end").textContent = fmt(end);
+    var sumOne = state.intervals.reduce(function (a, iv) { return a + secs(iv); }, 0);
+    var txt;
+    if (!tl.length) txt = "Enter a maximum time and at least one interval longer than 0 seconds.";
+    else {
+      txt = tl.length + (tl.length === 1 ? " horn" : " horns") + " in " + fmt(end) + ". The list adds up to " + fmt(sumOne) + ".";
+      if (!state.repeat && sumOne < maxS) txt += " Repeat is off, so the session ends after the last interval.";
+      if (sumOne > maxS) txt += " The last interval is cut short at " + fmt(maxS) + ".";
+    }
+    $("plan-text").textContent = txt;
+  }
+
+  function loadInputs() {
+    $("max-m").value = state.max.m; $("max-s").value = state.max.s;
+    $("repeat").checked = !!state.repeat;
+    $("vol").value = state.vol;
+    renderRows();
+    updatePlan();
+  }
+
+  $("max-m").addEventListener("input", function () { state.max.m = clampInt(this.value, 0, 999); afterEdit(); });
+  $("max-s").addEventListener("input", function () { state.max.s = clampInt(this.value, 0, 59); afterEdit(); });
+  $("max-m").addEventListener("change", function () { this.value = state.max.m; });
+  $("max-s").addEventListener("change", function () { this.value = state.max.s; });
+  $("repeat").addEventListener("change", function () { state.repeat = this.checked; afterEdit(); });
+  $("vol").addEventListener("input", function () { state.vol = parseFloat(this.value); save(); if (master) master.gain.value = state.vol; });
+  $("add-iv").addEventListener("click", function () {
+    var last = state.intervals[state.intervals.length - 1];
+    state.intervals.push({ m: last.m, s: last.s });
+    renderRows(); afterEdit();
+  });
+
+  /* ---------- audio ---------- */
+  var ctx = null, master = null, bus = null;
+  function ensureAudio() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
+      var comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -10; comp.ratio.value = 6;
+      master = ctx.createGain();
+      master.gain.value = state.vol;
+      master.connect(comp); comp.connect(ctx.destination);
+      // Horn bus: distortion for a harsh, buzzy edge, then a boost around 1.5 kHz
+      // where music has less energy, so the horn stays easy to pick out.
+      var shaper = ctx.createWaveShaper();
+      var curve = new Float32Array(1024);
+      for (var i = 0; i < 1024; i++) { var x = i / 512 - 1; curve[i] = Math.tanh(3.2 * x); }
+      shaper.curve = curve;
+      var boost = ctx.createBiquadFilter();
+      boost.type = "peaking"; boost.frequency.value = 1500; boost.Q.value = 0.8; boost.gain.value = 7;
+      bus = ctx.createGain();
+      bus.gain.value = 0.9;
+      bus.connect(shaper); shaper.connect(boost); boost.connect(master);
+    }
+    if (ctx.state === "suspended") ctx.resume();
+  }
+
+  // One horn blast: two harsh, slightly clashing sawtooth tones plus a square sub tone,
+  // with a quick upward scoop at the start like an air horn.
+  var VOICES = [
+    { type: "sawtooth", f: 392, g: 0.34 },
+    { type: "sawtooth", f: 466, g: 0.30 },
+    { type: "sawtooth", f: 784, g: 0.14 },
+    { type: "square",   f: 196, g: 0.22 }
+  ];
+  function blast(when, dur, nodes) {
+    VOICES.forEach(function (v) {
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = v.type;
+      o.frequency.setValueAtTime(v.f * 0.88, when);
+      o.frequency.exponentialRampToValueAtTime(v.f, when + 0.07);
+      g.gain.setValueAtTime(0.0001, when);
+      g.gain.linearRampToValueAtTime(v.g, when + 0.015);
+      g.gain.setValueAtTime(v.g, when + dur - 0.05);
+      g.gain.linearRampToValueAtTime(0.0001, when + dur);
+      o.connect(g); g.connect(bus);
+      o.start(when); o.stop(when + dur + 0.05);
+      nodes.push(o);
+    });
+  }
+
+  // Interval end: two short blasts. Final end of the session: three short, then one long.
+  function gong(when, finalStrike) {
+    var nodes = [], t = when, n = finalStrike ? 3 : 2, k;
+    for (k = 0; k < n; k++) { blast(t, 0.45, nodes); t += 0.62; }
+    if (finalStrike) blast(t, 1.4, nodes);
+    return nodes;
+  }
+
+  $("test").addEventListener("click", function () { ensureAudio(); gong(ctx.currentTime + 0.05, false); });
+
+  /* ---------- run ---------- */
+  var run = null, timer = null, wake = null;
+
+  function elapsed() {
+    if (!run) return 0;
+    return run.running ? run.acc + (performance.now() - run.t0) / 1000 : run.acc;
+  }
+
+  function show(which) {
+    ["setup", "run", "done"].forEach(function (v) { $(v).hidden = v !== which; });
+    window.scrollTo(0, 0);
+  }
+
+  async function lockScreen() {
+    try {
+      if (navigator.wakeLock && document.visibilityState === "visible") wake = await navigator.wakeLock.request("screen");
+    } catch (e) { wake = null; }
+  }
+  function unlockScreen() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && run && run.running) lockScreen();
+  });
+
+  function start() {
+    var tl = buildTimeline();
+    if (!tl.length) { $("err").textContent = "Set a maximum time and give every interval at least 1 second."; return; }
+    if (state.intervals.some(function (iv) { return secs(iv) < 1; })) { $("err").textContent = "Every interval needs at least 1 second."; return; }
+    ensureAudio();
+    run = { tl: tl, T: tl[tl.length - 1].end, acc: 0, t0: performance.now(), running: true, finished: false };
+    $("pause").textContent = "Pause";
+    $("total").textContent = fmt(run.T);
+    renderStrip($("strip-run"), tl, 0);
+    show("run");
+    lockScreen();
+    clearInterval(timer);
+    timer = setInterval(tick, 100);
+    tick();
+  }
+
+  function schedule(e) {
+    run.tl.forEach(function (b) {
+      if (!b.sched && b.end - e < 25) {
+        b.when = ctx.currentTime + Math.max(0, b.end - e);
+        b.nodes = gong(b.when, b.last);
+        b.sched = true;
+      }
+    });
+  }
+
+  function tick() {
+    if (!run) return;
+    var e = Math.min(elapsed(), run.T);
+    if (run.running) schedule(e);
+    var cur = null;
+    for (var k = 0; k < run.tl.length; k++) { if (run.tl[k].end > e) { cur = run.tl[k]; break; } }
+    if (!cur) { finish(); return; }
+    var rem = cur.end - e, len = cur.end - cur.start;
+    $("cur-time").textContent = fmt(Math.ceil(rem));
+    $("cur-label").textContent = state.repeat && state.intervals.length > 0 && run.tl.length > state.intervals.length
+      ? "Interval " + cur.n + " · round " + cur.round : "Interval " + cur.n;
+    var idx = run.tl.indexOf(cur), nx = run.tl[idx + 1];
+    $("next-text").textContent = nx ? "Next: interval " + nx.n + " · " + fmt(nx.end - nx.start) : "Last interval";
+    var p = (e - cur.start) / len;
+    $("ring").style.strokeDasharray = CIRC;
+    $("ring").style.strokeDashoffset = CIRC * (1 - p);
+    $("left").textContent = fmt(Math.ceil(run.T - e));
+    $("elapsed").textContent = fmt(Math.floor(e));
+    renderStrip($("strip-run"), run.tl, e);
+  }
+
+  function finish() {
+    if (run.finished) return;
+    run.finished = true; run.running = false;
+    clearInterval(timer); unlockScreen();
+    $("done-text").textContent = fmt(run.T);
+    $("done-sub").textContent = run.tl.length + (run.tl.length === 1 ? " horn played." : " horns played.");
+    show("done");
+  }
+
+  function pauseResume() {
+    if (!run) return;
+    if (run.running) {
+      run.acc = elapsed(); run.running = false;
+      var now = ctx.currentTime;
+      run.tl.forEach(function (b) {
+        if (b.sched && b.when > now) {
+          (b.nodes || []).forEach(function (n) { try { n.stop(0); } catch (e) {} });
+          b.sched = false;
+        }
+      });
+      $("pause").textContent = "Resume";
+      unlockScreen();
+    } else {
+      ensureAudio();
+      run.t0 = performance.now(); run.running = true;
+      $("pause").textContent = "Pause";
+      lockScreen();
+    }
+    tick();
+  }
+
+  function stop() {
+    if (run) {
+      var now = ctx ? ctx.currentTime : 0;
+      run.tl.forEach(function (b) {
+        if (b.sched && b.when > now) (b.nodes || []).forEach(function (n) { try { n.stop(0); } catch (e) {} });
+      });
+    }
+    clearInterval(timer); unlockScreen(); run = null;
+    show("setup");
+  }
+
+  $("start").addEventListener("click", start);
+  $("pause").addEventListener("click", pauseResume);
+  $("stop").addEventListener("click", stop);
+  $("again").addEventListener("click", function () { run = null; show("setup"); });
+
+  loadInputs();
+})();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+</script>
+
+</html>
